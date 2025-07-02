@@ -222,6 +222,7 @@ async function eliminarArchivo(rutaArchivo) {
     }
 }
 
+// cOdex
 const main = async () => {
 
     await loadTemplates()

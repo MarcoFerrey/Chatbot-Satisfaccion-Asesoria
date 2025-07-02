@@ -2,7 +2,7 @@ import { EVENTS } from '@builderbot/bot'
 import { utils } from '@builderbot/bot'
 import { addKeyword } from '@builderbot/bot'
 
-export const flowSatisfaccion = addKeyword(utils.setEvent('Satisfaccion')).addAnswer(['*1. En una escala del 1 al 10, ¿qué nota le das al servicio recibido?* (1 = muy malo / 10 = excelente)\n ✍🏼 Solo responde con el número\n 📌 Si escribes fuera de ese rango, te pediremos que respondas nuevamente (del 1 al 10).'], {capture: true, delay: 1000},
+export const flowSatisfaccion = addKeyword(utils.setEvent('Asesoria')).addAnswer(['*1. En una escala del 1 al 10, ¿qué nota le das al servicio recibido?* (1 = muy malo / 10 = excelente)\n ✍🏼 Solo responde con el número\n 📌 Si escribes fuera de ese rango, te pediremos que respondas nuevamente (del 1 al 10).'], {capture: true, delay: 1000},
     async (ctx, ctxFn) => {
         const n = ctx.body.trim()
         if(!["1","2","3","4","5","6","7","8","9","10"].includes(n)){

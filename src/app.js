@@ -3,6 +3,7 @@ import { PostgreSQLAdapter as Database } from '@builderbot/database-postgres'
 import { BaileysProvider as Provider } from '@builderbot/provider-baileys'
 import { startBrowser, generarImagen } from './functions/imageHTML.js'
 import { flowSatisfaccion, flowBajo_satisfaccion, flowMedio_satisfaccion, flowAlto_satisfaccion, flowTerminado_satisfaccion} from './events/satisfaccion/encuestaSatisfaccion.js'
+import { flowAsesoria, flowSI_asesoria, flowINTERESADO_asesoria, flowNO_asesoria } from './events/asesoria/asesoria.js'
 import path from 'path'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
@@ -12,7 +13,6 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 const PORT = process.env.PORT ?? 3008
-
 
 /**
  * CARGAR PLANTILLAS .TXT
@@ -37,7 +37,7 @@ function enviarMensajeSatisfaccion(nombre){
 }
 
 function enviarMensajeAsesoria(nombre){
-    return mensaje_asesoria.replace('[nombre]', nombre)
+    return mensaje_asesoria.replace('[Series]', nombre)
 }
 
 /**
@@ -229,7 +229,7 @@ const main = async () => {
 
     await startBrowser()
 
-    const adapterFlow = createFlow([flowSatisfaccion, flowBajo_satisfaccion, flowMedio_satisfaccion, flowAlto_satisfaccion, flowTerminado_satisfaccion])
+    const adapterFlow = createFlow([flowSatisfaccion, flowBajo_satisfaccion, flowMedio_satisfaccion, flowAlto_satisfaccion, flowTerminado_satisfaccion, flowAsesoria, flowSI_asesoria, flowINTERESADO_asesoria, flowNO_asesoria])
     
     const adapterProvider = createProvider(Provider)
     const adapterDB = new Database({
@@ -318,27 +318,33 @@ const main = async () => {
                 console.log(datos)
                 const existeEnWhatsApp = await verificarNumeroWhatsApp(bot, number)
                 if(existeEnWhatsApp){
-                    const htmlContent = generateTableHTML(datos)
-                    const imgName = `tabla_${datos.cliente}.png`
-                    const imgPath = path.join(process.cwd(), 'assets', imgName)
-                    await generarImagen(htmlContent, imgPath)
-
                     //Enviar mensaje con Imagen
                     console.log('Enviando imagen')
                     await bot.sendMessage(`51${number}`,
-                        enviarMensajeAsesoria(datos.cliente),{
-                            media: join(process.cwd(), 'assets', `tabla_${datos.cliente}.png`)
+                        enviarMensajeAsesoria(datos.series.join(', ')),{
+                            media: join(process.cwd(), 'assets', `image_asesoriaCVA.png`)
                         }
                     )
                     console.log('Imagen enviado')
-                    await eliminarArchivo(imgPath)
 
+                    //Guardando variables
+                    await bot.state(`51${number}`).update({
+                        series: datos.series,
+                        cliente: datos.cliente,
+                        modelos: datos.modelos,
+                        planes: datos.planes,
+                        inicios: datos.inicios,
+                        correos: datos.correos_vendedores,
+                    })
+                    
                     //Disparar flujo de asesoria
                     await bot.dispatch('Asesoria', {
                         from: `51${number}`
                     })
 
-                    return res.end('Datos enviado')
+                    return res.end(JSON.stringify({
+                        status: `Datos enviado`
+                    }))
                 } else {
                     console.log(`✖️ No se puede enviar mensaje. Numero 51${number} no existe en WhatsApp`)
                     return res.end(`Error: No existe el numero en WhatsApp 51${number}`)
@@ -346,11 +352,81 @@ const main = async () => {
 
             } catch (error) {
                 console.error(`Error en el endPoint /Asesoria`, error)
-
                 return res.end(`Error: ${error.message}`)
             }
         })
     )
+
+    adapterProvider.server.post(
+        'v1/testWhatsApp',
+        handleCtx(async(bot, req, res) => {
+            try {
+                const { datos } = req.body
+                
+                // Validación básica
+                if (!datos || !Array.isArray(datos)) {
+                    return res.end(JSON.stringify({
+                        status: 'Error: datos debe ser un array',
+                        datos: []
+                    }))
+                }
+                
+                console.log(`Procesando ${datos.length} números`)
+                const lista_numeros = []
+                
+                // Procesamiento secuencial con delay opcional
+                for (let i = 0; i < datos.length; i++) {
+                    const item = datos[i]
+                    const celular = item[0]
+                    const correo_psrr = item[2]
+                    const correo_planner = item[3]
+                    const correo_supervisor = item[4]
+
+                    try {
+                        const existeEnWhatsApp = await verificarNumeroWhatsApp(bot, celular)
+                        
+                        lista_numeros.push([
+                            item[1],
+                            celular,
+                            existeEnWhatsApp ? 'Si tiene WhatsApp' : 'No tiene WhatsApp',
+                            correo_psrr,
+                            correo_planner,
+                            correo_supervisor
+                        ])
+                        
+                        // Delay pequeño para evitar rate limiting (opcional)
+                        if (i < datos.length - 1) {
+                            await new Promise(resolve => setTimeout(resolve, 100))
+                        }
+                        
+                    } catch (error) {
+                        console.log(`Error verificando ${celular}: ${error.message}`)
+                        lista_numeros.push([
+                            item[1],
+                            celular,
+                            'Error en verificación',
+                            correo_psrr,
+                            correo_planner,
+                            correo_supervisor
+                        ])
+                    }
+                }
+                
+                return res.end(JSON.stringify({
+                    status: `Cantidad de números validados ${lista_numeros.length}`,
+                    datos: lista_numeros
+                }))
+                
+            } catch (error) {
+                console.log(`Error general: ${error}`)
+                return res.end(JSON.stringify({
+                    status: `Error: ${error.message}`,
+                    datos: []
+                }))
+            }
+        })
+    )
+
     httpServer(+PORT)
 }
 
